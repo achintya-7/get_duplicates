@@ -3,6 +3,7 @@ package gcp
 import (
 	"context"
 	db "duplicates-finder/db/generated"
+	"fmt"
 	"sort"
 	"sync"
 
@@ -14,14 +15,68 @@ import (
 
 const (
 	BUCKET = "editing_userdata"
+	BATCH  = 50
 )
 
-func (c *Client) GetUserProfiles(user_id string) ([]string, error) {
+func (c *Client) Start() {
+	count, err := c.Store.GetProfilesCount(context.TODO())
+	if err != nil {
+		log.Println("Error getting profiles count", err)
+		return
+	}
+
+	batches := count / int64(BATCH)
+
+	log.Println("Total profiles", count)
+	log.Println("Batch size", BATCH)
+	log.Println("Total batches", batches)
+
+	for i := int64(0); i < batches; i++ {
+		log.Println("Batch", i+1)
+
+		params := db.GetProfilesWithOffsetParams{
+			Limit:  int32(BATCH),
+			Offset: int32(i * BATCH),
+		}
+
+		data, err := c.Store.GetProfilesWithOffset(context.TODO(), params)
+		if err != nil {
+			log.Println("Error getting profiles with limit and offser", params.Limit, params.Offset, err)
+			continue
+		}
+
+		var batch_wg sync.WaitGroup
+
+		for _, it := range data {
+			batch_wg.Add(1)
+			go c.startCollectingDuplicates(it, &batch_wg)
+		}
+
+		batch_wg.Wait()
+	}
+}
+
+func (c *Client) startCollectingDuplicates(userid string, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	paths := c.getUserPaths(userid)
+
+	var path_wg sync.WaitGroup
+
+	for _, path := range paths {
+		path_wg.Add(1)
+		go c.listZipObjects(context.Background(), path, &path_wg)
+	}
+
+	path_wg.Wait()
+}
+
+func (c *Client) getUserPaths(user_id string) []string {
 	paths := []string{}
 
 	data, err := c.Store.GetProfilesFoldersCatalogs(context.TODO(), user_id)
 	if err != nil {
-		return nil, err
+		return nil
 	}
 
 	for _, it := range data {
@@ -29,10 +84,10 @@ func (c *Client) GetUserProfiles(user_id string) ([]string, error) {
 		paths = append(paths, path)
 	}
 
-	return paths, nil
+	return paths
 }
 
-func (c *Client) ListZipObjects(ctx context.Context, path string, wg *sync.WaitGroup) {
+func (c *Client) listZipObjects(ctx context.Context, path string, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	objects := []ObjectAttrs{}
@@ -77,42 +132,19 @@ func checkLastTwoZips(objects []ObjectAttrs) {
 
 	if lastZip.size == secondLastZip.size && lastZip.checksum == secondLastZip.checksum {
 		zap.L().Warn(
-			"Duplicate zip found\n",
-			zap.String("secondLastZip", secondLastZip.path),
-			zap.String("lastZip", lastZip.path),
-			zap.String("----", "----"),
+			"Duplicate zip found",
+			zap.String("second_last_path", secondLastZip.path),
+			zap.String("last_path", lastZip.path),
+			zap.String("second_last_zip_checksum", fmt.Sprint(secondLastZip.checksum)),
+			zap.String("last_zip_checksum", fmt.Sprint(lastZip.checksum)),
+			zap.String("second_last_zip_size", fmt.Sprint(secondLastZip.size)),
+			zap.String("last_zip_size", fmt.Sprint(lastZip.size)),
+			zap.String("second_last_zip_storage_class", secondLastZip.storageClass),
+			zap.String("last_zip_storage_class", lastZip.storageClass),
+			zap.String("second_last_zip_last_modified", fmt.Sprint(secondLastZip.lastModified)),
+			zap.String("last_zip_last_modified", fmt.Sprint(lastZip.lastModified)),
+			zap.String("second_last_dump", fmt.Sprint(secondLastZip)),
+			zap.String("last_dump", fmt.Sprint(lastZip)),
 		)
 	}
-}
-
-func (c *Client) Start() {
-	count, err := c.Store.GetProfilesCount(context.TODO())
-	if err != nil {
-		log.Println("Error getting profiles count", err)
-		return
-	}
-
-	batchSize := int64(10)
-	batches := count / int64(batchSize)
-
-	for i := int64(0); i < batches; i++ {
-		params := db.GetProfilesWithOffsetParams{
-			Limit:  int32(batchSize),
-			Offset: int32(i * batchSize),
-		}
-
-		data, err := c.Store.GetProfilesWithOffset(context.TODO(), params)
-		if err != nil {
-			log.Println("Error getting profiles with limit and offser", params.Limit, params.Offset, err)
-			continue
-		}
-
-		var batch_wg sync.WaitGroup
-
-		for _, it := range data {
-			batch_wg.Add(1)
-			
-		}
-	}
-
 }

@@ -1,16 +1,12 @@
 package main
 
 import (
-	"context"
 	"duplicates-finder/gcp"
 	"log"
-	"sync"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
-
-var wg sync.WaitGroup
 
 func init() {
 	// Set up a zap logger
@@ -37,7 +33,7 @@ func init() {
 }
 
 func main() {
-	user_id := "2LGMW74VzpaUJcW0wnh2ZQUwaqn2"
+	// user_id := "2LGMW74VzpaUJcW0wnh2ZQUwaqn2"
 
 	log.Println("Creating GCP client...")
 	client, err := gcp.NewClient()
@@ -45,17 +41,6 @@ func main() {
 		log.Println("Error creating GCP client", err)
 	}
 
-	log.Println("Getting user profiles...")
-	paths, err := client.GetUserProfiles(user_id)
-	if err != nil {
-		log.Println("Error getting user profiles", err)
-	}
-
-	log.Println("Listing zip objects...", len(paths))
-	for _, path := range paths {
-		wg.Add(1)
-		go client.ListZipObjects(context.Background(), path, &wg)
-	}
-
-	wg.Wait()
+	log.Println("Starting to find duplicates...")
+	client.Start()
 }
