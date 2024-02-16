@@ -3,6 +3,8 @@ package gcp
 import (
 	"context"
 	db "duplicates-finder/db/generated"
+	"log"
+	"runtime"
 
 	"cloud.google.com/go/storage"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,7 +17,21 @@ type Client struct {
 }
 
 func NewClient() (*Client, error) {
-	connPool, err := pgxpool.New(context.Background(), "postgres://postgres:postgres@localhost:5432/upload_manager?sslmode=disable")
+	config, err := pgxpool.ParseConfig("postgres://postgres:postgres@localhost:5432/upload_manager?sslmode=disable")
+	if err != nil {
+		return nil, err
+	}
+
+	numWorkers := runtime.NumCPU()
+	if numWorkers > 20 {
+		log.Println("Number of workers is too high, setting to 20")
+		config.MaxConns = 20
+	} else {
+		log.Println("Number of workers is", numWorkers)
+		config.MaxConns = int32(numWorkers)
+	}
+
+	connPool, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
 		return nil, err
 	}

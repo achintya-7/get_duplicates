@@ -16,7 +16,7 @@ import (
 
 const (
 	BUCKET = "editing_userdata"
-	BATCH  = 90
+	BATCH  = 15
 )
 
 func (c *Client) Start() {

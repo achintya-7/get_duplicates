@@ -33,8 +33,6 @@ func init() {
 }
 
 func main() {
-	// user_id := "2LGMW74VzpaUJcW0wnh2ZQUwaqn2"
-
 	log.Println("Creating GCP client...")
 	client, err := gcp.NewClient()
 	if err != nil || client == nil {
