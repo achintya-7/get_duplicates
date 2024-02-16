@@ -4,6 +4,7 @@ import (
 	"context"
 	db "duplicates-finder/db/generated"
 	"fmt"
+	"math"
 	"sort"
 	"sync"
 
@@ -15,7 +16,7 @@ import (
 
 const (
 	BUCKET = "editing_userdata"
-	BATCH  = 50
+	BATCH  = 90
 )
 
 func (c *Client) Start() {
@@ -25,7 +26,7 @@ func (c *Client) Start() {
 		return
 	}
 
-	batches := count / int64(BATCH)
+	batches := int64(math.Ceil(float64(count) / float64(BATCH)))
 
 	log.Println("Total profiles", count)
 	log.Println("Batch size", BATCH)
